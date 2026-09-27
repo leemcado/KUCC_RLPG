@@ -14,7 +14,7 @@ from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, Student
 
 
 class MyAgent(StudentAgent):
-    # 0. 이름·색·가중치 파일
+    # 0. 기본명세
     name = "my_agent"
     color = (90, 160, 250)  # (R, G, B)
     weights = "my_agent.pt"

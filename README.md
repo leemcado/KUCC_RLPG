@@ -1,6 +1,6 @@
 # Cell Arena
 
-강화학습(DQN · Dueling DQN · PPO) 실습용 세포 대전 환경.
+강화학습(DQN, Dueling DQN, PPO) 실습용 세포 대전 환경.
 `agent.py` 하나에 에이전트와 학습 루프를 구현해 학습하고, 서로 대결한다.
 
 ## 설치
