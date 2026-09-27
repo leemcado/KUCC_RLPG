@@ -1,0 +1,12 @@
+# ── 학습 env (make_env 가 읽는 키, 모두 필요) ─────────────────────────────────────────
+# 상대: 봇 이름 (bronze / silver / gold / diamond) 또는 에이전트 파일 경로 (.py, 자기 대결·다른 학생)
+opponents: [bronze, bronze, bronze, silver, silver, gold, diamond]
+num_envs: 64        # 동시에 돌리는 env 수 = 배치 B
+max_steps: 1000     # 에피소드 길이 상한 T (도달하면 truncated). null 이면 누군가 승리 크기에 도달해야만 끝난다
+seed: 0
+
+# ── 학습 하이퍼파라미터 (자유롭게 추가·수정하고 코드에서 cfg.<키> 로 읽는다) ─────────────────
+total_samples: 5_000_000   # 학습에 쓸 샘플 수 (env 스텝 × num_envs)
+lr: 3.0e-4
+gamma: 0.99
+batch_size: 256

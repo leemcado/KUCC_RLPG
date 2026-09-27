@@ -1,0 +1,4 @@
+# pip install -r requirements.txt
+# cell_arena 는 인스트럭터 레포를 그대로 설치한다 (봇·엔진·wandb/torch/jax 등 의존성 전부 포함).
+# Linux + NVIDIA GPU 라면: pip install "cell-arena[cuda] @ git+https://github.com/leemcado/RL_playground.git"
+cell-arena @ git+https://github.com/leemcado/RL_playground.git

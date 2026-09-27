@@ -1,0 +1,18 @@
+# 가중치·출력·로그
+*.pt
+*.pth
+*.ckpt
+outputs/
+wandb/
+*.log
+
+# 파이썬 캐시
+__pycache__/
+*.py[cod]
+
+# 가상환경·에디터
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
