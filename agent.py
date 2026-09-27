@@ -20,8 +20,15 @@ class MyAgent(StudentAgent):
     weights = "my_agent.pt"
 
     # 1. 관측 / 액션 형태
-    obs_spec = ObsSpec(mode="state", max_objects=32)
+    obs_spec = ObsSpec(mode="image", resolution=64)
+    # obs_spec = ObsSpec(mode="state", max_objects=32)
+    #   image: self_state (B, 5), image (B, 5, R, R)                R = resolution
+    #   state: self_state (B, 5), objects (B, M, 7), mask (B, M)    M = max_objects
+
     action_spec = ActionSpec(mode="discrete")
+    # action_spec = ActionSpec(mode="continuous")
+    #   discrete:   (B,)    정수 0~17
+    #   continuous: (B, 3)  float [θ, move, dash]
 
     # 2. 모델. 구조는 self.cfg 만으로 정해져야 한다 (load 할 때 다시 호출됨)
     def setup(self) -> None:

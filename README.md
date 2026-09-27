@@ -15,7 +15,7 @@ wandb login
 
 `agent.py` 와 `config.yaml` 만 고친다.
 
-- `obs_spec` / `action_spec` — 관측(`state` / `image`)과 액션 형태
+- `obs_spec` / `action_spec` — 관측(`image` / `state`)과 액션(`discrete` / `continuous`) 형태
 - `setup` — 모델 (DQN / Dueling DQN / PPO)
 - `preprocess` — 관측 → 신경망 입력
 - `policy` — 행동 선택
@@ -79,7 +79,7 @@ cell-arena-play --opponents gold agent.py   # 상대 지정 (봇 이름 또는 �
 | `mask` | `(B, M)` | state 모드. 실제 객체면 True, 나머지는 0 패딩 |
 | `image` | `(B, 5, R, R)` | image 모드. 채널 `[밥, 블랙홀, 화이트홀, 다른 세포, 나]`, 값 0/1 |
 
-- `ObsSpec(mode="state", max_objects=32)` 또는 `ObsSpec(mode="image", resolution=64)`
+- `ObsSpec(mode="image", resolution=64)` (기본) 또는 `ObsSpec(mode="state", max_objects=32)`
 - 이미지는 크기와 상관없이 R×R 이라 클수록 넓고 거칠게 본다
 - 세포밥은 밥과 같은 `food` 로 보인다. 다른 세포의 속도는 주지 않는다
 
@@ -88,7 +88,6 @@ cell-arena-play --opponents gold agent.py   # 상대 지정 (봇 이름 또는 �
 | 모드 | 형태 | 내용 |
 |---|---|---|
 | `discrete` | `(B,)` ∈ [0, 18) | 0~8 = 정지·상·하·좌·우·좌상·우상·좌하·우하, 9~17 = 같은 순서 + 돌진 |
-| `multibinary` | `(B, 5)` | `[상, 하, 좌, 우, 돌진]` |
 | `continuous` | `(B, 3)` | `[θ, move, dash]`. θ 는 오른쪽 0, 아래 +π/2. move·dash 는 0.5 초과면 켜짐 |
 
 ## 사건 (`events`)
