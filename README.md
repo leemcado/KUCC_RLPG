@@ -37,15 +37,15 @@ cell-arena-play --opponents gold agent.py   # 상대 지정 (봇 이름 또는 �
 
 ## 예제
 
-가장 기초적인 학습만 구현한 예제. 모두 이미지 관측 + 프레임 스택(`frame_stack`, 기본 4)을 쓴다. 출발점으로 복사해 써도 된다.
+`agent.py` 를 채운 기본 구현. 관측은 모두 이미지 4 프레임.
 
 | 파일 | 알고리즘 | 액션 |
 |---|---|---|
-| `dqn_agent.py` | DQN (ε-greedy, 리플레이 버퍼, 타깃 네트워크) | `discrete` |
-| `ddqn_agent.py` | Dueling DQN (DQN 과 같고 Q 머리만 V + A) | `discrete` |
-| `ppo_agent.py` | PPO (가우시안 정책, GAE, clip) | `continuous` |
+| `dqn_agent.py` | DQN | `discrete` |
+| `dueling_dqn_agent.py` | Dueling DQN | `discrete` |
+| `ppo_agent.py` | PPO | `continuous` |
 
-하이퍼파라미터는 파일 안 `cfg.get("키", 기본값)` 에서 확인하고 `config.yaml` 로 덮어쓴다.
+하이퍼파라미터 기본값은 각 파일의 `cfg.get(...)` 에 있고, `config.yaml` 에 적으면 덮어쓴다.
 
 ## 게임 규칙
 

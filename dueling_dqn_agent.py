@@ -1,4 +1,4 @@
-"""DQN 예제. 사용법과 API 는 README.md 참고."""
+"""Dueling DQN 예제. dqn_agent.py 와 QNet 만 다르다. 사용법과 API 는 README.md 참고."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class FrameStack:
         return out
 
 
-class QNet(nn.Module):
+class DuelingQNet(nn.Module):
     def __init__(self, in_channels: int, resolution: int) -> None:
         super().__init__()
         self.conv = nn.Sequential(
@@ -58,10 +58,14 @@ class QNet(nn.Module):
             nn.Flatten(),
         )
         n = self.conv(torch.zeros(1, in_channels, resolution, resolution)).shape[1]
-        self.head = nn.Sequential(nn.Linear(n, 256), nn.ReLU(), nn.Linear(256, NUM_ACTIONS))
+        self.v = nn.Sequential(nn.Linear(n, 256), nn.ReLU(), nn.Linear(256, 1))
+        self.a = nn.Sequential(nn.Linear(n, 256), nn.ReLU(), nn.Linear(256, NUM_ACTIONS))
 
+    # Q = V + A - mean(A)
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.head(self.conv(x.float()))
+        h = self.conv(x.float())
+        a = self.a(h)
+        return self.v(h) + a - a.mean(dim=1, keepdim=True)
 
 
 class ReplayBuffer:
@@ -86,11 +90,11 @@ class ReplayBuffer:
         return {k: v[idx].to(device) for k, v in self.data.items()}
 
 
-class DQNAgent(StudentAgent):
+class DuelingDQNAgent(StudentAgent):
     # 0. 기본명세
-    name = "dqn"
-    color = (90, 160, 250)  # (R, G, B)
-    weights = "dqn.pt"
+    name = "dueling_dqn"
+    color = (250, 160, 90)  # (R, G, B)
+    weights = "dueling_dqn.pt"
 
     # 1. 관측 / 액션 형태
     obs_spec = ObsSpec(mode="image", resolution=64)
@@ -100,7 +104,7 @@ class DQNAgent(StudentAgent):
     def setup(self) -> None:
         k = self.cfg.get("frame_stack", 4)
         self.frames = FrameStack(k)
-        self.q = QNet(k * 5, self.obs_spec.resolution).to(self.device)
+        self.q = DuelingQNet(k * 5, self.obs_spec.resolution).to(self.device)
         self.epsilon = 0.05
 
     # 3. 관측(NumPy) => 신경망 입력. 이미지 k 프레임 (B, k*5, R, R)
@@ -125,7 +129,7 @@ class DQNAgent(StudentAgent):
         return (events.size_after - events.size_before) / 100.0 - 1.0 * events.died + 5.0 * events.won
 
 
-def update(agent: DQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimizer, b: dict[str, torch.Tensor], gamma: float) -> float:
+def update(agent: DuelingDQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimizer, b: dict[str, torch.Tensor], gamma: float) -> float:
     q = agent.q(b["x"]).gather(1, b["action"].unsqueeze(1)).squeeze(1)
     with torch.no_grad():
         target = b["reward"] + gamma * (1 - b["terminated"]) * q_target(b["x_next"]).max(dim=1).values
@@ -139,7 +143,7 @@ def update(agent: DQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimize
 
 # 6. 학습 루프
 def train(cfg: Config) -> None:
-    agent = DQNAgent(cfg)
+    agent = DuelingDQNAgent(cfg)
     env = make_env(cfg, agent)
     run = wandb.init(project="cell-arena", name=agent.name, config=cfg.to_dict())
     q_target = copy.deepcopy(agent.q)

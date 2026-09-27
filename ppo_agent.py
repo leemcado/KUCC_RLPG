@@ -1,7 +1,4 @@
-"""PPO 예제. 이미지 관측 + 연속 행동. 가장 기초적인 형태만 구현했다.
-
-    python ppo_agent.py
-"""
+"""PPO 예제. 사용법과 API 는 README.md 참고."""
 
 from __future__ import annotations
 
@@ -19,11 +16,7 @@ from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, Student
 
 
 class FrameStack:
-    """최근 k 개 관측을 쌓는다. 다른 세포의 속도는 관측에 없어서 여러 프레임이 필요하다.
-
-    push(x): (B, ...) → (B, k, ...). 초기화된 원소는 첫 프레임을 k 번 복제한다.
-    peek(x): push 와 같지만 저장하지 않는다 (학습 루프에서 final_obs 로 다음 상태 만들 때).
-    """
+    """최근 k 프레임을 쌓는다. (B, ...) -> (B, k, ...)"""
 
     def __init__(self, k: int) -> None:
         self.k = k
@@ -45,16 +38,15 @@ class FrameStack:
             self.fresh[:] = False
         return self.frames
 
+    # push 와 같지만 저장하지 않는다. final_obs 로 다음 상태를 만들 때 쓴다
     def peek(self, x: torch.Tensor) -> torch.Tensor:
         out = torch.cat([self.frames[:, 1:], x.unsqueeze(1)], dim=1)
-        out[self.fresh] = x[self.fresh].unsqueeze(1)
+        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채운다
         return out
 
 
-class Encoder(nn.Module):
-    """이미지 (B, C, R, R) + 내 상태 (B, 3) → 특징 (B, 256)."""
-
-    def __init__(self, in_channels: int, resolution: int, dim: int = 256) -> None:
+class ActorCritic(nn.Module):
+    def __init__(self, in_channels: int, resolution: int) -> None:
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, 32, 8, stride=4), nn.ReLU(),
@@ -63,175 +55,154 @@ class Encoder(nn.Module):
             nn.Flatten(),
         )
         n = self.conv(torch.zeros(1, in_channels, resolution, resolution)).shape[1]
-        self.fc = nn.Sequential(nn.Linear(n + 3, dim), nn.ReLU())
-
-    def forward(self, img: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
-        return self.fc(torch.cat([self.conv(img.float()), vec], dim=1))
-
-
-class ActorCritic(nn.Module):
-    """정책: [θ, move, dash] 의 가우시안 (평균은 신경망, 표준편차는 학습 파라미터). 가치: V(s)."""
-
-    def __init__(self, in_channels: int, resolution: int) -> None:
-        super().__init__()
-        self.encoder = Encoder(in_channels, resolution)
-        self.mu = nn.Linear(256, 3)
+        self.mu = nn.Sequential(nn.Linear(n, 256), nn.ReLU(), nn.Linear(256, 3))
         self.log_std = nn.Parameter(torch.zeros(3))
-        self.v = nn.Linear(256, 1)
+        self.v = nn.Sequential(nn.Linear(n, 256), nn.ReLU(), nn.Linear(256, 1))
         with torch.no_grad():
-            self.mu.bias.copy_(torch.tensor([0.0, 1.0, 0.0]))  # 처음엔 주로 움직이고 가끔 돌진
+            self.mu[-1].bias.copy_(torch.tensor([0.0, 1.0, 0.0]))  # move 는 켜진 채로 시작
 
-    def forward(self, img: torch.Tensor, vec: torch.Tensor) -> tuple[Normal, torch.Tensor]:
-        h = self.encoder(img, vec)
+    def forward(self, x: torch.Tensor) -> tuple[Normal, torch.Tensor]:
+        h = self.conv(x.float())
         return Normal(self.mu(h), self.log_std.exp()), self.v(h).squeeze(1)
 
 
 class PPOAgent(StudentAgent):
+    # 0. 기본명세
     name = "ppo"
-    color = (120, 220, 120)
+    color = (120, 220, 120)  # (R, G, B)
     weights = "ppo.pt"
 
+    # 1. 관측 / 액션 형태
     obs_spec = ObsSpec(mode="image", resolution=64)
     action_spec = ActionSpec(mode="continuous")
 
+    # 2. 모델
     def setup(self) -> None:
         k = self.cfg.get("frame_stack", 4)
         self.frames = FrameStack(k)
         self.net = ActorCritic(k * 5, self.obs_spec.resolution).to(self.device)
 
-    def _features(self, obs: Observation) -> tuple[torch.Tensor, torch.Tensor]:
+    # 3. 관측(NumPy) => 신경망 입력. 이미지 k 프레임 (B, k*5, R, R)
+    def preprocess(self, obs: Observation) -> torch.Tensor:
         img = torch.as_tensor(obs.image, device=self.device)
-        s = torch.as_tensor(obs.self_state, device=self.device)
-        vec = torch.stack([torch.log(s[:, 0].clamp(min=1) / 100), s[:, 3], s[:, 4]], dim=1)
-        return img, vec
+        return self.frames.push(img).flatten(1, 2)
 
-    # 이미지는 (B, k·5, R, R) uint8 로 쌓고, 내 상태는 [log(크기/100), v_x, v_y]
-    def preprocess(self, obs: Observation) -> tuple[torch.Tensor, torch.Tensor]:
-        img, vec = self._features(obs)
-        return self.frames.push(img).flatten(1, 2), vec
-
-    def peek(self, obs: Observation) -> tuple[torch.Tensor, torch.Tensor]:
-        img, vec = self._features(obs)
-        return self.frames.peek(img).flatten(1, 2), vec
-
-    # 탐색이면 샘플, 대결이면 평균
-    def policy(self, x: tuple[torch.Tensor, torch.Tensor], explore: bool) -> np.ndarray:
-        dist, _ = self.net(*x)
+    # 4. 행동 선택. 탐색은 샘플, 대결은 평균
+    def policy(self, x: torch.Tensor, explore: bool) -> np.ndarray:
+        dist, _ = self.net(x)
         action = dist.sample() if explore else dist.mean
         return action.cpu().numpy()
 
+    # 프레임 스택 초기화. done=True 인 원소만
     def reset(self, done: np.ndarray) -> None:
         self.frames.reset(done)
 
+    # 5. 보상
     def reward(self, events: Events, obs: Observation) -> np.ndarray:
         return (events.size_after - events.size_before) / 100.0 - 1.0 * events.died + 5.0 * events.won
 
 
+def update(agent: PPOAgent, optimizer: torch.optim.Optimizer, rollout: list[dict[str, torch.Tensor]], last_value: torch.Tensor, cfg: Config) -> dict[str, float]:
+    gamma, lam, clip = cfg.get("gamma", 0.99), cfg.get("gae_lambda", 0.95), cfg.get("clip", 0.2)
+    data = {k: torch.stack([step[k] for step in rollout]) for k in rollout[0]}  # (T, B, ...)
+
+    # GAE
+    adv = torch.zeros_like(data["reward"])
+    gae, next_value = 0.0, last_value
+    for t in reversed(range(len(rollout))):
+        nonterminal = 1 - data["done"][t]
+        delta = data["reward"][t] + gamma * next_value * nonterminal - data["value"][t]
+        gae = delta + gamma * lam * nonterminal * gae
+        adv[t] = gae
+        next_value = data["value"][t]
+    data["adv"] = adv
+    data["ret"] = adv + data["value"]
+    flat = {k: v.flatten(0, 1) for k, v in data.items()}
+
+    for _ in range(cfg.get("epochs", 4)):
+        for idx in torch.randperm(len(flat["adv"])).split(cfg.get("minibatch_size", 1024)):
+            b = {k: v[idx].to(agent.device) for k, v in flat.items()}
+            dist, value = agent.net(b["x"])
+            ratio = (dist.log_prob(b["action"]).sum(1) - b["logp"]).exp()
+            adv_b = (b["adv"] - b["adv"].mean()) / (b["adv"].std() + 1e-8)
+            policy_loss = -torch.min(ratio * adv_b, ratio.clamp(1 - clip, 1 + clip) * adv_b).mean()
+            value_loss = 0.5 * (b["ret"] - value).pow(2).mean()
+            entropy = dist.entropy().sum(1).mean()
+            loss = policy_loss + 0.5 * value_loss - cfg.get("ent_coef", 0.001) * entropy
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(agent.net.parameters(), 0.5)
+            optimizer.step()
+    return {"train/policy_loss": float(policy_loss), "train/value_loss": float(value_loss), "train/entropy": float(entropy)}
+
+
+# 6. 학습 루프
 def train(cfg: Config) -> None:
     agent = PPOAgent(cfg)
     env = make_env(cfg, agent)
     run = wandb.init(project="cell-arena", name=agent.name, config=cfg.to_dict())
-
-    gamma = cfg.get("gamma", 0.99)
-    lam = cfg.get("gae_lambda", 0.95)
-    n_steps = cfg.get("n_steps", 128)  # env 당 rollout 길이
-    epochs = cfg.get("epochs", 4)
-    minibatch_size = cfg.get("minibatch_size", 1024)
-    clip = cfg.get("clip", 0.2)
-    ent_coef = cfg.get("ent_coef", 0.001)
     optimizer = torch.optim.Adam(agent.net.parameters(), lr=cfg.get("lr", 3e-4))
+    rollout: list[dict[str, torch.Tensor]] = []
+    n_steps = cfg.get("n_steps", 128)  # env 당 rollout 길이
+    gamma = cfg.get("gamma", 0.99)
 
     ep_reward = np.zeros(cfg.num_envs)
     recent_returns: list[float] = []
     log_every = 10_000
     next_log = log_every
+    stats: dict[str, float] = {}
     start_time = time.time()
 
     obs = env.reset()
     agent.reset(np.ones(cfg.num_envs, dtype=bool))
     samples = 0
     while samples < cfg.total_samples:
-        # 1) rollout 수집
-        roll: dict[str, list[torch.Tensor]] = {k: [] for k in ("img", "vec", "action", "logp", "value", "reward", "done")}
-        for _ in range(n_steps):
+        with torch.no_grad():  # act() 와 같다. logp, value 가 필요해서 나눠 부른다
+            x = agent.preprocess(obs)
+            dist, value = agent.net(x)
+            action = dist.sample()
+        out = env.step(action.cpu().numpy())
+        reward = agent.reward(out.events, out.final_obs)
+        samples += cfg.num_envs
+
+        # max_steps 로 끊긴 env 는 마지막 상태의 가치로 부트스트랩
+        r = torch.as_tensor(reward, dtype=torch.float32)
+        cut = torch.as_tensor(out.truncated & ~out.terminated)
+        if cut.any():
             with torch.no_grad():
-                x = agent.preprocess(obs)
-                dist, value = agent.net(*x)
-                action = dist.sample()
-            out = env.step(action.cpu().numpy())
-            reward = agent.reward(out.events, out.final_obs)
-            samples += cfg.num_envs
+                x_final = agent.frames.peek(torch.as_tensor(out.final_obs.image, device=agent.device)).flatten(1, 2)
+                r[cut] += gamma * agent.net(x_final)[1].cpu()[cut]
 
-            # max_steps 로 잘린 env 는 끝난 게 아니므로 마지막 상태의 가치로 부트스트랩한다
-            r = torch.as_tensor(reward, dtype=torch.float32)
-            cut = torch.as_tensor(out.truncated & ~out.terminated)
-            if cut.any():
-                with torch.no_grad():
-                    _, v_final = agent.net(*agent.peek(out.final_obs))
-                r[cut] += gamma * v_final.cpu()[cut]
-            episode_done = out.terminated | out.truncated
+        episode_done = out.terminated | out.truncated
+        rollout.append({
+            "x": x.cpu(), "action": action.cpu(), "logp": dist.log_prob(action).sum(1).cpu(),
+            "value": value.cpu(), "reward": r, "done": torch.as_tensor(episode_done, dtype=torch.float32),
+        })
 
-            roll["img"].append(x[0].cpu())
-            roll["vec"].append(x[1].cpu())
-            roll["action"].append(action.cpu())
-            roll["logp"].append(dist.log_prob(action).sum(1).cpu())
-            roll["value"].append(value.cpu())
-            roll["reward"].append(r)
-            roll["done"].append(torch.as_tensor(episode_done, dtype=torch.float32))
-
-            ep_reward += reward
-            recent_returns.extend(ep_reward[episode_done].tolist())
-            recent_returns[:-200] = []
-            ep_reward[episode_done] = 0.0
-
-            agent.reset(episode_done | out.events.died)
-            obs = out.obs
-
-        # 2) GAE
-        with torch.no_grad():
-            _, last_value = agent.net(*agent.peek(obs))
-        data = {k: torch.stack(v) for k, v in roll.items()}  # (T, B, ...)
-        adv = torch.zeros_like(data["reward"])
-        gae = torch.zeros(cfg.num_envs)
-        next_value = last_value.cpu()
-        for t in reversed(range(n_steps)):
-            nonterminal = 1 - data["done"][t]
-            delta = data["reward"][t] + gamma * next_value * nonterminal - data["value"][t]
-            gae = delta + gamma * lam * nonterminal * gae
-            adv[t] = gae
-            next_value = data["value"][t]
-        data["adv"] = adv
-        data["ret"] = adv + data["value"]
-        flat = {k: v.flatten(0, 1) for k, v in data.items()}  # (T·B, ...)
-
-        # 3) 업데이트
-        n = len(flat["adv"])
-        for _ in range(epochs):
-            for idx in torch.randperm(n).split(minibatch_size):
-                b = {k: v[idx].to(agent.device) for k, v in flat.items()}
-                dist, value = agent.net(b["img"], b["vec"])
-                ratio = (dist.log_prob(b["action"]).sum(1) - b["logp"]).exp()
-                adv_b = (b["adv"] - b["adv"].mean()) / (b["adv"].std() + 1e-8)
-                policy_loss = -torch.min(ratio * adv_b, ratio.clamp(1 - clip, 1 + clip) * adv_b).mean()
-                value_loss = 0.5 * (b["ret"] - value).pow(2).mean()
-                entropy = dist.entropy().sum(1).mean()
-                loss = policy_loss + 0.5 * value_loss - ent_coef * entropy
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(agent.net.parameters(), 0.5)
-                optimizer.step()
+        ep_reward += reward
+        recent_returns.extend(ep_reward[episode_done].tolist())
+        recent_returns[:-200] = []
+        ep_reward[episode_done] = 0.0
 
         if samples >= next_log:
-            next_log = samples + log_every
+            next_log += log_every
             run.log({
-                "train/reward_step": float(data["reward"].mean()),
+                "train/reward_step": float(reward.mean()),
                 "train/episode_return": float(np.mean(recent_returns)) if recent_returns else float("nan"),
-                "train/size": float(obs.self_state[:, 0].mean()),
+                "train/size": float(out.final_obs.self_state[:, 0].mean()),
+                "train/deaths": int(out.events.died.sum()),
                 "train/samples_per_sec": samples / (time.time() - start_time),
-                "train/policy_loss": float(policy_loss),
-                "train/value_loss": float(value_loss),
-                "train/entropy": float(entropy),
+                **stats,
             }, step=samples)
+
+        agent.reset(episode_done | out.events.died)
+        obs = out.obs
+
+        if len(rollout) == n_steps:
+            with torch.no_grad():
+                last_value = agent.net(agent.frames.peek(torch.as_tensor(obs.image, device=agent.device)).flatten(1, 2))[1].cpu()
+            stats = update(agent, optimizer, rollout, last_value, cfg)
+            rollout.clear()
 
     agent.save()
     run.finish()

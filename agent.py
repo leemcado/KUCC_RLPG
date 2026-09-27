@@ -14,11 +14,7 @@ from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, Student
 
 
 class FrameStack:
-    """최근 k 개 관측을 쌓는다. 다른 세포의 속도는 관측에 없어서 여러 프레임이 필요하다.
-
-    push(x): (B, ...) → (B, k, ...). 초기화된 원소는 첫 프레임을 k 번 복제한다.
-    peek(x): push 와 같지만 저장하지 않는다 (학습 루프에서 final_obs 로 다음 상태 만들 때).
-    """
+    """최근 k 프레임을 쌓는다. (B, ...) -> (B, k, ...)"""
 
     def __init__(self, k: int) -> None:
         self.k = k
@@ -40,9 +36,10 @@ class FrameStack:
             self.fresh[:] = False
         return self.frames
 
+    # push 와 같지만 저장하지 않는다. final_obs 로 다음 상태를 만들 때 쓴다
     def peek(self, x: torch.Tensor) -> torch.Tensor:
         out = torch.cat([self.frames[:, 1:], x.unsqueeze(1)], dim=1)
-        out[self.fresh] = x[self.fresh].unsqueeze(1)
+        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채운다
         return out
 
 
@@ -68,9 +65,10 @@ class MyAgent(StudentAgent):
         self.frames = FrameStack(self.cfg.get("frame_stack", 4))
         raise NotImplementedError
 
-    # 3. 관측(NumPy) => 신경망 입력. 예: self.frames.push(torch.as_tensor(obs.image, device=self.device))
+    # 3. 관측(NumPy) => 신경망 입력. 기본은 이미지 k 프레임 (B, k*5, R, R)
     def preprocess(self, obs: Observation) -> torch.Tensor:
-        raise NotImplementedError
+        img = torch.as_tensor(obs.image, device=self.device)
+        return self.frames.push(img).flatten(1, 2)
 
     # 4. 행동 선택. 대결에서는 explore=False
     def policy(self, x: torch.Tensor, explore: bool) -> np.ndarray:
@@ -107,7 +105,7 @@ def train(cfg: Config) -> None:
         reward = agent.reward(out.events, out.final_obs)
         samples += cfg.num_envs
 
-        # TODO: 전이 저장, 업데이트. 다음 상태는 frames.peek 로 만든다 (preprocess 를 또 부르면 프레임이 두 번 쌓인다)
+        # TODO: 전이 저장, 업데이트. 다음 상태는 agent.frames.peek 로 만든다 (preprocess 를 또 부르면 프레임이 두 번 쌓인다)
 
         episode_done = out.terminated | out.truncated
         ep_reward += reward
