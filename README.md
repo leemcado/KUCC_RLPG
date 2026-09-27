@@ -50,14 +50,14 @@ python ppo_agent.py --config test.yaml
 
 | 대상 | 메모리 | 조절하는 키 |
 |---|---|---|
-| DQN 리플레이 버퍼 | `buffer_size` x 160KB | `buffer_size` |
-| PPO rollout | `n_steps` x `num_envs` x 80KB | `n_steps`, `num_envs` |
+| DQN 리플레이 버퍼 | `buffer_size` x 200KB | `buffer_size` |
+| PPO rollout | `n_steps` x `num_envs` x 100KB | `n_steps`, `num_envs` |
 
 | 램 | DQN `buffer_size` | PPO `num_envs` x `n_steps` |
 |---|---|---|
-| 8GB | 10_000 (약 1.6GB) | 32 x 128 (약 0.3GB) |
-| 16GB | 30_000 (약 4.9GB) | 64 x 128 (약 0.7GB) |
-| 32GB 이상 | 60_000 (약 9.8GB) | 64 x 256 (약 1.3GB) |
+| 8GB | 10_000 (약 2.0GB) | 32 x 128 (약 0.4GB) |
+| 16GB | 30_000 (약 5.9GB) | 64 x 128 (약 0.8GB) |
+| 32GB 이상 | 60_000 (약 11.8GB) | 64 x 256 (약 1.6GB) |
 
 - `frame_stack` 이나 `resolution` 을 키우면 메모리도 비례해서 증가 (`frame_stack` x `resolution`^2)
 - 학습이 너무 느리면 `num_envs` 를 줄이거나 `cell-arena-doctor` 의 처리량(샘플/s) 확인
@@ -144,13 +144,14 @@ cell-arena-play --opponents gold agent.py   # 상대 지정 (봇 이름 또는 �
 | 필드 | 형태 | 내용 |
 |---|---|---|
 | `self_state` | `(B, 5)` | `[크기, x, y, v_x, v_y]` |
-| `objects` | `(B, M, 7)` | state 모드. 시야 안 객체 가까운 순 `[dx, dy, 크기, is_food, is_black_hole, is_white_hole, is_cell]` |
+| `objects` | `(B, M, 8)` | state 모드. 시야 안 객체 가까운 순 `[dx, dy, 크기, is_food, is_cell_food, is_black_hole, is_white_hole, is_cell]` |
 | `mask` | `(B, M)` | state 모드. 실제 객체면 True, 나머지는 0 패딩 |
-| `image` | `(B, 5, R, R)` | image 모드. 채널 `[밥, 블랙홀, 화이트홀, 다른 세포, 나]`, 값 0/1 |
+| `image` | `(B, 6, R, R)` | image 모드. 채널 `[밥, 세포밥, 블랙홀, 화이트홀, 다른 세포, 나]`, 값 0/1 |
 
 - `ObsSpec(mode="image", resolution=64)` (기본) 또는 `ObsSpec(mode="state", max_objects=32)`
 - 이미지는 크기와 상관없이 R x R 이라 클수록 넓고 거칠게 보임
-- 세포밥은 밥과 같은 `food` 로 보임. 다른 세포의 속도는 주지 않음
+- 밥과 세포밥은 따로 구분됨 (`is_food` / `is_cell_food`, 이미지 채널 0 / 1). 순서는 `cell_arena.OBJECT_FEATURES`, `cell_arena.IMAGE_CHANNELS`
+- 다른 세포의 속도는 주지 않음
 
 ## 액션
 

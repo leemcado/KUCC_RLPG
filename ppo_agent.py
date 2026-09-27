@@ -12,7 +12,17 @@ import torch.nn as nn
 import wandb
 from torch.distributions import Normal
 
-from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, StudentAgent, load_config, make_env
+from cell_arena import (
+    IMAGE_CHANNELS,
+    ActionSpec,
+    Config,
+    Events,
+    Observation,
+    ObsSpec,
+    StudentAgent,
+    load_config,
+    make_env,
+)
 
 
 class FrameStack:
@@ -80,9 +90,9 @@ class PPOAgent(StudentAgent):
     def setup(self) -> None:
         k = self.cfg.get("frame_stack", 4)
         self.frames = FrameStack(k)
-        self.net = ActorCritic(k * 5, self.obs_spec.resolution).to(self.device)
+        self.net = ActorCritic(k * len(IMAGE_CHANNELS), self.obs_spec.resolution).to(self.device)
 
-    # 3. 관측(NumPy) -> 신경망 입력. 이미지 k 프레임 (B, k*5, R, R)
+    # 3. 관측(NumPy) -> 신경망 입력. 이미지 k 프레임 (B, k*6, R, R)
     def preprocess(self, obs: Observation) -> torch.Tensor:
         img = torch.as_tensor(obs.image, device=self.device)
         return self.frames.push(img).flatten(1, 2)

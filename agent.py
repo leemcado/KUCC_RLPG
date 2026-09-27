@@ -52,8 +52,8 @@ class MyAgent(StudentAgent):
     # 1. 관측 / 액션 형태
     obs_spec = ObsSpec(mode="image", resolution=64)
     # obs_spec = ObsSpec(mode="state", max_objects=32)
-    #   image: self_state (B, 5), image (B, 5, R, R)                R = resolution
-    #   state: self_state (B, 5), objects (B, M, 7), mask (B, M)    M = max_objects
+    #   image: self_state (B, 5), image (B, 6, R, R)                R = resolution
+    #   state: self_state (B, 5), objects (B, M, 8), mask (B, M)    M = max_objects
 
     action_spec = ActionSpec(mode="discrete")
     # action_spec = ActionSpec(mode="continuous")
@@ -65,7 +65,7 @@ class MyAgent(StudentAgent):
         self.frames = FrameStack(self.cfg.get("frame_stack", 4))
         raise NotImplementedError
 
-    # 3. 관측(NumPy) -> 신경망 입력. 기본은 이미지 k 프레임 (B, k*5, R, R)
+    # 3. 관측(NumPy) -> 신경망 입력. 기본은 이미지 k 프레임 (B, k*6, R, R)
     def preprocess(self, obs: Observation) -> torch.Tensor:
         img = torch.as_tensor(obs.image, device=self.device)
         return self.frames.push(img).flatten(1, 2)
