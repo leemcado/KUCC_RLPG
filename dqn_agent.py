@@ -19,7 +19,7 @@ NUM_ACTIONS = 18
 
 
 class FrameStack:
-    """최근 k 프레임을 쌓는다. (B, ...) -> (B, k, ...)"""
+    """최근 k 프레임 스택. (B, ...) -> (B, k, ...)"""
 
     def __init__(self, k: int) -> None:
         self.k = k
@@ -41,10 +41,10 @@ class FrameStack:
             self.fresh[:] = False
         return self.frames
 
-    # push 와 같지만 저장하지 않는다. final_obs 로 다음 상태를 만들 때 쓴다
+    # push 와 같지만 저장하지 않음. final_obs 로 다음 상태를 만들 때 사용
     def peek(self, x: torch.Tensor) -> torch.Tensor:
         out = torch.cat([self.frames[:, 1:], x.unsqueeze(1)], dim=1)
-        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채운다
+        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채움
         return out
 
 
@@ -103,12 +103,12 @@ class DQNAgent(StudentAgent):
         self.q = QNet(k * 5, self.obs_spec.resolution).to(self.device)
         self.epsilon = 0.05
 
-    # 3. 관측(NumPy) => 신경망 입력. 이미지 k 프레임 (B, k*5, R, R)
+    # 3. 관측(NumPy) -> 신경망 입력. 이미지 k 프레임 (B, k*5, R, R)
     def preprocess(self, obs: Observation) -> torch.Tensor:
         img = torch.as_tensor(obs.image, device=self.device)
         return self.frames.push(img).flatten(1, 2)
 
-    # 4. 행동 선택. ε-greedy
+    # 4. 행동 선택. epsilon-greedy
     def policy(self, x: torch.Tensor, explore: bool) -> np.ndarray:
         action = self.q(x).argmax(dim=1)
         if explore:
@@ -164,7 +164,7 @@ def train(cfg: Config) -> None:
     samples = 0
     while samples < cfg.total_samples:
         agent.epsilon = max(eps_end, eps_start - (eps_start - eps_end) * samples / eps_decay)
-        with torch.no_grad():  # act() 와 같다. x 를 버퍼에 넣으려고 나눠 부른다
+        with torch.no_grad():  # act() 와 같음. x 를 버퍼에 넣으려고 나눠서 호출
             x = agent.preprocess(obs)
             action = agent.policy(x, explore=True)
         out = env.step(action)

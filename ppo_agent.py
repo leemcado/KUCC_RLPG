@@ -16,7 +16,7 @@ from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, Student
 
 
 class FrameStack:
-    """최근 k 프레임을 쌓는다. (B, ...) -> (B, k, ...)"""
+    """최근 k 프레임 스택. (B, ...) -> (B, k, ...)"""
 
     def __init__(self, k: int) -> None:
         self.k = k
@@ -38,10 +38,10 @@ class FrameStack:
             self.fresh[:] = False
         return self.frames
 
-    # push 와 같지만 저장하지 않는다. final_obs 로 다음 상태를 만들 때 쓴다
+    # push 와 같지만 저장하지 않음. final_obs 로 다음 상태를 만들 때 사용
     def peek(self, x: torch.Tensor) -> torch.Tensor:
         out = torch.cat([self.frames[:, 1:], x.unsqueeze(1)], dim=1)
-        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채운다
+        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채움
         return out
 
 
@@ -82,7 +82,7 @@ class PPOAgent(StudentAgent):
         self.frames = FrameStack(k)
         self.net = ActorCritic(k * 5, self.obs_spec.resolution).to(self.device)
 
-    # 3. 관측(NumPy) => 신경망 입력. 이미지 k 프레임 (B, k*5, R, R)
+    # 3. 관측(NumPy) -> 신경망 입력. 이미지 k 프레임 (B, k*5, R, R)
     def preprocess(self, obs: Observation) -> torch.Tensor:
         img = torch.as_tensor(obs.image, device=self.device)
         return self.frames.push(img).flatten(1, 2)
@@ -157,7 +157,7 @@ def train(cfg: Config) -> None:
     agent.reset(np.ones(cfg.num_envs, dtype=bool))
     samples = 0
     while samples < cfg.total_samples:
-        with torch.no_grad():  # act() 와 같다. logp, value 가 필요해서 나눠 부른다
+        with torch.no_grad():  # act() 와 같음. logp, value 가 필요해서 나눠서 호출
             x = agent.preprocess(obs)
             dist, value = agent.net(x)
             action = dist.sample()

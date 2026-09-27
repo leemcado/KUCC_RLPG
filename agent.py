@@ -14,7 +14,7 @@ from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, Student
 
 
 class FrameStack:
-    """최근 k 프레임을 쌓는다. (B, ...) -> (B, k, ...)"""
+    """최근 k 프레임 스택. (B, ...) -> (B, k, ...)"""
 
     def __init__(self, k: int) -> None:
         self.k = k
@@ -36,10 +36,10 @@ class FrameStack:
             self.fresh[:] = False
         return self.frames
 
-    # push 와 같지만 저장하지 않는다. final_obs 로 다음 상태를 만들 때 쓴다
+    # push 와 같지만 저장하지 않음. final_obs 로 다음 상태를 만들 때 사용
     def peek(self, x: torch.Tensor) -> torch.Tensor:
         out = torch.cat([self.frames[:, 1:], x.unsqueeze(1)], dim=1)
-        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채운다
+        out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채움
         return out
 
 
@@ -47,7 +47,7 @@ class MyAgent(StudentAgent):
     # 0. 기본명세. name, weights 는 본인 이름으로
     name = "my_agent"
     color = (90, 160, 250)  # (R, G, B)
-    weights = "my_agent.pt"  # 대결장은 이 파일을 불러온다
+    weights = "my_agent.pt"  # 대결장은 이 파일을 불러옴
 
     # 1. 관측 / 액션 형태
     obs_spec = ObsSpec(mode="image", resolution=64)
@@ -58,14 +58,14 @@ class MyAgent(StudentAgent):
     action_spec = ActionSpec(mode="discrete")
     # action_spec = ActionSpec(mode="continuous")
     #   discrete:   (B,)    정수 0~17
-    #   continuous: (B, 3)  float [θ, move, dash]
+    #   continuous: (B, 3)  float [theta, move, dash]
 
-    # 2. 모델. 구조는 self.cfg 만으로 정해져야 한다 (load 할 때 다시 호출됨)
+    # 2. 모델. 구조는 self.cfg 만으로 정해져야 함 (load 할 때 다시 호출됨)
     def setup(self) -> None:
         self.frames = FrameStack(self.cfg.get("frame_stack", 4))
         raise NotImplementedError
 
-    # 3. 관측(NumPy) => 신경망 입력. 기본은 이미지 k 프레임 (B, k*5, R, R)
+    # 3. 관측(NumPy) -> 신경망 입력. 기본은 이미지 k 프레임 (B, k*5, R, R)
     def preprocess(self, obs: Observation) -> torch.Tensor:
         img = torch.as_tensor(obs.image, device=self.device)
         return self.frames.push(img).flatten(1, 2)
@@ -105,7 +105,7 @@ def train(cfg: Config) -> None:
         reward = agent.reward(out.events, out.final_obs)
         samples += cfg.num_envs
 
-        # TODO: 전이 저장, 업데이트. 다음 상태는 agent.frames.peek 로 만든다 (preprocess 를 또 부르면 프레임이 두 번 쌓인다)
+        # TODO: 전이 저장, 업데이트. 다음 상태는 agent.frames.peek 로 만듦 (preprocess 를 또 부르면 프레임이 두 번 쌓임)
 
         episode_done = out.terminated | out.truncated
         ep_reward += reward
