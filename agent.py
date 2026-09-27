@@ -14,10 +14,10 @@ from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, Student
 
 
 class MyAgent(StudentAgent):
-    # 0. 기본명세
+    # 0. 기본명세. name, weights 는 본인 이름으로
     name = "my_agent"
     color = (90, 160, 250)  # (R, G, B)
-    weights = "my_agent.pt"
+    weights = "my_agent.pt"  # 대결장은 이 파일을 불러온다
 
     # 1. 관측 / 액션 형태
     obs_spec = ObsSpec(mode="image", resolution=64)
@@ -34,7 +34,7 @@ class MyAgent(StudentAgent):
     def setup(self) -> None:
         raise NotImplementedError
 
-    # 3. 관측(NumPy) → 신경망 입력
+    # 3. 관측(NumPy) => 신경망 입력
     def preprocess(self, obs: Observation) -> torch.Tensor:
         raise NotImplementedError
 
