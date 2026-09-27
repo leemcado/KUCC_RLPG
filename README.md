@@ -9,6 +9,8 @@ cell-arena-doctor                  # 설치·하드웨어 점검 (처음 한 번
 python agent.py                    # 학습 → my_agent.pt
 python agent.py --config dqn.yaml  # 다른 설정 파일로
 cell-arena-check agent.py          # 제출 전 점검
+cell-arena-play                    # 게임 직접 플레이 (W/A/S/D 이동, SPACE 돌진, TAB 패널 세포 변경, R 리셋, ESC 종료)
+cell-arena-play --opponents gold agent.py   # 상대 지정: 봇 이름 또는 내 에이전트 파일 (가중치 필요)
 ```
 
 제출: `agent.py` 를 본인 이름으로 바꿔 가중치 파일과 함께 낸다 (또는 이 레포를 그대로 제출). 파일 하나에 모든 코드를 담는다 (다른 .py 를 import 하지 않는다).
