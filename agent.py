@@ -13,6 +13,39 @@ import wandb
 from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, StudentAgent, load_config, make_env
 
 
+class FrameStack:
+    """최근 k 개 관측을 쌓는다. 다른 세포의 속도는 관측에 없어서 여러 프레임이 필요하다.
+
+    push(x): (B, ...) → (B, k, ...). 초기화된 원소는 첫 프레임을 k 번 복제한다.
+    peek(x): push 와 같지만 저장하지 않는다 (학습 루프에서 final_obs 로 다음 상태 만들 때).
+    """
+
+    def __init__(self, k: int) -> None:
+        self.k = k
+        self.frames: torch.Tensor | None = None
+        self.fresh: torch.Tensor | None = None
+
+    def reset(self, done: np.ndarray) -> None:
+        if self.frames is None or len(done) != len(self.frames):
+            self.frames = None
+            return
+        self.fresh |= torch.as_tensor(done, device=self.fresh.device)
+
+    def push(self, x: torch.Tensor) -> torch.Tensor:
+        if self.frames is None or self.frames.shape[0] != x.shape[0] or self.frames.device != x.device:
+            self.frames = x.unsqueeze(1).repeat_interleave(self.k, dim=1)
+            self.fresh = torch.zeros(x.shape[0], dtype=torch.bool, device=x.device)
+        else:
+            self.frames = self.peek(x)
+            self.fresh[:] = False
+        return self.frames
+
+    def peek(self, x: torch.Tensor) -> torch.Tensor:
+        out = torch.cat([self.frames[:, 1:], x.unsqueeze(1)], dim=1)
+        out[self.fresh] = x[self.fresh].unsqueeze(1)
+        return out
+
+
 class MyAgent(StudentAgent):
     # 0. 기본명세. name, weights 는 본인 이름으로
     name = "my_agent"
@@ -32,9 +65,10 @@ class MyAgent(StudentAgent):
 
     # 2. 모델. 구조는 self.cfg 만으로 정해져야 한다 (load 할 때 다시 호출됨)
     def setup(self) -> None:
+        self.frames = FrameStack(self.cfg.get("frame_stack", 4))
         raise NotImplementedError
 
-    # 3. 관측(NumPy) => 신경망 입력
+    # 3. 관측(NumPy) => 신경망 입력. 예: self.frames.push(torch.as_tensor(obs.image, device=self.device))
     def preprocess(self, obs: Observation) -> torch.Tensor:
         raise NotImplementedError
 
@@ -42,9 +76,9 @@ class MyAgent(StudentAgent):
     def policy(self, x: torch.Tensor, explore: bool) -> np.ndarray:
         raise NotImplementedError
 
-    # (선택) 프레임 스택·RNN 상태 초기화. done=True 인 원소만
+    # 프레임 스택 초기화. done=True 인 원소만
     def reset(self, done: np.ndarray) -> None:
-        pass
+        self.frames.reset(done)
 
     # 5. 보상
     def reward(self, events: Events, obs: Observation) -> np.ndarray:
@@ -73,7 +107,7 @@ def train(cfg: Config) -> None:
         reward = agent.reward(out.events, out.final_obs)
         samples += cfg.num_envs
 
-        # TODO: 전이 저장, 업데이트
+        # TODO: 전이 저장, 업데이트. 다음 상태는 frames.peek 로 만든다 (preprocess 를 또 부르면 프레임이 두 번 쌓인다)
 
         episode_done = out.terminated | out.truncated
         ep_reward += reward

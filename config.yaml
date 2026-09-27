@@ -6,6 +6,7 @@ seed: 0
 
 # 나머지는 자유. 코드에서 cfg.<키> 로 읽는다
 total_samples: 5_000_000
+frame_stack: 4
 lr: 3.0e-4
 gamma: 0.99
 batch_size: 256
