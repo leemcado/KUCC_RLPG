@@ -3,13 +3,70 @@
 강화학습(DQN, Dueling DQN, PPO) 실습용 세포 대전 환경.
 `agent.py` 하나에 에이전트와 학습 루프를 구현해 학습하고, 서로 대결함.
 
-## 설치
+## 시작하기
+
+### 0. 설치
 
 ```bash
 pip install -r requirements.txt   # Linux + NVIDIA GPU 는 requirements.txt 주석 참고
-cell-arena-doctor                 # 설치 점검
+cell-arena-doctor                 # 설치 점검. 마지막 줄이 "모두 정상" 이면 됨
 wandb login
 ```
+
+### 1. 게임 직접 플레이
+
+```bash
+cell-arena-play                           # 기본 봇들과 플레이
+cell-arena-play --opponents gold diamond  # 상대 지정
+cell-arena-check dqn_agent.py             # 예제 에이전트 점검. [통과] 가 나오면 됨
+```
+
+창이 뜨고 조작이 되는지, 밥을 먹으면 커지고 큰 세포에 먹히면 리스폰되는지 확인.
+
+### 2. 학습 돌려보고 로그 확인
+
+`config.yaml` 을 `test.yaml` 로 복사해 아래 두 줄만 바꾸고 예제로 짧게 학습.
+
+```yaml
+total_samples: 100_000
+learning_starts: 20_000
+```
+
+```bash
+python dqn_agent.py --config test.yaml    # 끝나면 dqn.pt 생성
+python ppo_agent.py --config test.yaml
+```
+
+- 터미널 첫 줄에 `[cell-arena] env ...` 가 찍히면 env 정상
+- wandb 대시보드(`https://wandb.ai` 의 `cell-arena` 프로젝트)에 `train/*` 그래프가 10,000 샘플마다 찍히는지 확인
+- 인터넷이 없으면 `WANDB_MODE=offline python dqn_agent.py --config test.yaml`, 나중에 `wandb sync wandb/offline-run-*`
+
+### 3. 내 컴퓨터에 맞게 설정 조율
+
+램 용량 확인 (macOS: 활동 모니터 > 메모리, Windows: 작업 관리자 > 성능 > 메모리, Linux: `free -h`).
+학습이 램의 절반 정도만 쓰게 맞추는 걸 권장.
+
+메모리를 가장 많이 쓰는 건 저장해 두는 관측 (`frame_stack: 4`, `resolution: 64` 기준).
+
+| 대상 | 메모리 | 조절하는 키 |
+|---|---|---|
+| DQN 리플레이 버퍼 | `buffer_size` x 160KB | `buffer_size` |
+| PPO rollout | `n_steps` x `num_envs` x 80KB | `n_steps`, `num_envs` |
+
+| 램 | DQN `buffer_size` | PPO `num_envs` x `n_steps` |
+|---|---|---|
+| 8GB | 10_000 (약 1.6GB) | 32 x 128 (약 0.3GB) |
+| 16GB | 30_000 (약 4.9GB) | 64 x 128 (약 0.7GB) |
+| 32GB 이상 | 60_000 (약 9.8GB) | 64 x 256 (약 1.3GB) |
+
+- `frame_stack` 이나 `resolution` 을 키우면 메모리도 비례해서 증가 (`frame_stack` x `resolution`^2)
+- 학습이 너무 느리면 `num_envs` 를 줄이거나 `cell-arena-doctor` 의 처리량(샘플/s) 확인
+- 학습 중 램이 가득 차면 (스왑 발생, 컴퓨터가 멈칫함) 위 키들을 줄이고 다시 실행
+
+### 4. 직접 설계
+
+`agent.py` 를 채우거나 예제 하나를 `agent.py` 로 복사해 시작. 아래 "할 일" 참고.
+관측 전처리, 모델, 보상, 학습 루프를 바꿔 가며 wandb 로 비교.
 
 ## 할 일
 
