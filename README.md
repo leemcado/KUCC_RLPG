@@ -167,7 +167,7 @@ Dueling 전환은 `dueling_dqn_agent.py` 의 `DuelingQNet` 과 비교.
 아래 명령은 스켈레톤을 구현한 뒤 실행하며, `name` / `weights` 를 바꿨다면 저장 파일명도 그에 맞춰 확인.
 
 ```bash
-python agent.py --config test.yaml
+uv run python agent.py --config test.yaml
 cell-arena-check agent.py
 cell-arena-play --opponents gold agent.py
 ```
