@@ -33,7 +33,7 @@ Git 도 설치되어 있어야 함 (`git --version` 으로 확인).
 해당 Python 이 없으면 uv 가 자동으로 내려받음.
 
 ```bash
-uv venv --python 3.11
+uv venv --python 3.12
 ```
 
 가상환경 활성화 (터미널을 새로 열 때마다 실행):
