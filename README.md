@@ -34,6 +34,7 @@ learning_starts: 20_000
 
 ```bash
 python dqn_agent.py --config test.yaml    # 끝나면 dqn.pt 생성
+python dueling_dqn_agent.py --config test.yaml  # 끝나면 dueling_dqn.pt 생성
 python ppo_agent.py --config test.yaml
 ```
 
@@ -91,6 +92,57 @@ cell-arena-play --opponents gold agent.py   # 상대 지정 (봇 이름 또는 �
 ```
 
 제출: 학습 전에 `name` 과 `weights` 를 `"<이름>"`, `"<이름>.pt"` 로 변경. 학습이 끝나면 `agent.py` 를 `<이름>.py` 로 바꿔 `<이름>.pt` 와 함께 제출. 대결장은 `weights` 에 적힌 파일을 불러옴. 다른 .py 는 import 불가.
+
+### DQN -> Dueling DQN 실습 순서
+
+`agent.py` 는 빈칸을 직접 채우는 스켈레톤. `setup` 과 `policy` 의 `NotImplementedError` 는 구현 후 제거.
+먼저 DQN 을 완성하고, 그다음 Q 네트워크를 Dueling 구조로 바꿈.
+학습 루프의 TODO 1~8 은 두 알고리즘에서 동일하게 사용.
+
+| 단계 | 구현할 내용 | 중간 확인 |
+|---|---|---|
+| 모델·행동 | `setup`, `policy` 구현 | Q 출력 `(B, 18)`, 행동은 0~17 정수 배열 `(B,)`. `explore=False` 에서는 탐험하지 않음 |
+| TODO 1 | 타깃 네트워크, 옵티마이저, 버퍼, 스케줄 준비 | 타깃은 학습 모델과 별도 객체이며 초기 가중치는 같음 |
+| TODO 2~3 | 탐험률 갱신, 현재 입력 확보, 다음 입력 구성, 전이 저장 | 전처리는 스텝당 한 번. 다음 입력은 `final_obs` 와 `frames.peek` 로 구성 |
+| TODO 4~5 | 미니배치의 Q(s, a) 선택, TD 타깃 계산 | 둘 다 `(batch_size,)`. 타깃에는 기울기가 없고 `terminated` 만 부트스트랩을 막음 |
+| TODO 6~7 | loss 계산, 역전파, 파라미터 갱신, 타깃 동기화 | 학습 모델은 업데이트되고 타깃은 정해진 샘플 간격에만 복사됨 |
+| TODO 8 | loss 와 탐험률 로그 추가 | `train/loss`, `train/epsilon` 을 기존 로그와 함께 기록 |
+| Dueling 전환 | 공통 특징에서 V 와 A 를 따로 출력해 결합 | V 는 `(B, 1)`, A 는 `(B, 18)`. 행동 축 평균을 빼서 Q 는 `(B, 18)` 유지 |
+
+막히면 `dqn_agent.py` 의 `ReplayBuffer`, `update`, `train` 을 해당 단계별로 참고.
+Dueling 전환은 `dueling_dqn_agent.py` 의 `DuelingQNet` 과 비교.
+두 모델의 체크포인트는 구조가 다르므로 전환 전 DQN 파일을 별도 보관하고, Dueling 은 다른 `weights` 이름으로 새로 학습.
+
+### 실습 완료 기준
+
+먼저 위의 `test.yaml` (10만 샘플, `learning_starts: 20_000`) 로 짧게 확인.
+버퍼 크기와 병렬 환경 수는 메모리 조율 표에 맞게 설정.
+아래 명령은 스켈레톤을 구현한 뒤 실행하며, `name` / `weights` 를 바꿨다면 저장 파일명도 그에 맞춰 확인.
+
+```bash
+python agent.py --config test.yaml
+cell-arena-check agent.py
+cell-arena-play --opponents gold agent.py
+```
+
+- [ ] **행동 규격:** `cell-arena-check agent.py` 에서 `[통과]` 가 나옴.
+- [ ] **학습 업데이트:** `learning_starts` 이후 `train/loss` 가 NaN/Inf 가 아닌 값으로 기록됨.
+  실제 업데이트 전후 학습 모델의 파라미터를 복사해 비교하여, 값이 바뀌는 것도 확인.
+  loss 가 계속 감소해야 하는 것은 아니며, 유한한 loss 만으로 업데이트 성공을 판정하지 않음.
+- [ ] **탐험률:** `train/epsilon` 이 설정한 시작값에서 하한까지 스케줄에 따라 감소함.
+  짧게 실행하면 하한까지 도달하지 않아도 됨.
+- [ ] **에피소드 로그:** 최소 한 에피소드가 종료된 뒤 `train/episode_return` 이 유한한 값으로 기록됨.
+  첫 에피소드가 끝나기 전의 NaN 은 정상. 로그는 10,000 샘플마다 기록됨.
+- [ ] **저장:** 학습이 정상 종료되고 `weights` 에 지정한 파일(기본 `my_agent.pt`)이 생성됨.
+- [ ] **재로딩·행동:** 학습 종료 후 위 플레이 명령을 별도 프로세스로 실행.
+  저장한 모델이 로드되고, shape 오류 없이 에이전트가 게임에 참여해 행동하는지 확인.
+- [ ] **Dueling:** 네트워크를 바꾼 뒤 같은 기준을 다시 통과하고, V/A 출력 크기와 결합식을 설명할 수 있음.
+
+여기까지는 **구현·실행 완료** 기준이며, 봇을 이기는 것이 필수는 아님.
+**성능 향상**을 주장하려면 학습 전후 모델을 같은 상대·평가 조건에서 `explore=False` 로 여러 번 평가해 비교.
+학습 중 보상이나 한 번의 대결 결과만으로 판단하지 않음.
+예제의 기본 탐험 스케줄은 10만 샘플 시점에도 무작위 행동 확률이 약 90.5% 이므로,
+짧은 학습 중의 행동과 탐험을 끈 평가 행동은 구분해야 함.
 
 ## 예제
 
