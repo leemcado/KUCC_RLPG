@@ -9,9 +9,19 @@ from pathlib import Path
 import numpy as np
 import torch
 import wandb
+from cell_arena import (
+    ActionSpec,
+    Config,
+    Events,
+    Observation,
+    ObsSpec,
+    StudentAgent,
+    load_config,
+    make_env,
+)
+from torch import nn
 
-from cell_arena import ActionSpec, Config, Events, Observation, ObsSpec, StudentAgent, load_config, make_env
-
+NUM_ACTIONS = 18
 
 class FrameStack:
     """최근 k 프레임 스택. (B, ...) -> (B, k, ...)"""
@@ -41,6 +51,46 @@ class FrameStack:
         out = torch.cat([self.frames[:, 1:], x.unsqueeze(1)], dim=1)
         out[self.fresh] = x[self.fresh].unsqueeze(1)  # 방금 리셋된 원소는 x 로 채움
         return out
+
+
+    # 모델 작성 영역에서 사용하는 네트워크
+class QNet(nn.Module):
+    def __init__(self, in_channels: int, resolution: int) -> None:
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, 32, 8, stride=4), nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
+            nn.Flatten(),
+        )
+        n = self.conv(torch.zeros(1, in_channels, resolution, resolution)).shape[1]
+        self.head = nn.Sequential(nn.Linear(n, 256), nn.ReLU(), nn.Linear(256, NUM_ACTIONS))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.conv(x.float()))
+
+
+# TODO 1 에서 사용하는 리플레이 버퍼
+class ReplayBuffer:
+    def __init__(self, capacity: int) -> None:
+        self.capacity = capacity
+        self.data: dict[str, torch.Tensor] = {}
+        self.pos = 0
+        self.size = 0
+
+    def add(self, **batch: torch.Tensor) -> None:
+        n = len(next(iter(batch.values())))
+        if not self.data:
+            self.data = {k: torch.zeros((self.capacity, *v.shape[1:]), dtype=v.dtype) for k, v in batch.items()}
+        idx = (self.pos + torch.arange(n)) % self.capacity
+        for k, v in batch.items():
+            self.data[k][idx] = v.cpu()
+        self.pos = (self.pos + n) % self.capacity
+        self.size = min(self.size + n, self.capacity)
+
+    def sample(self, n: int, device: torch.device) -> dict[str, torch.Tensor]:
+        idx = torch.randint(self.size, (n,))
+        return {k: v[idx].to(device) for k, v in self.data.items()}
 
 
 class MyAgent(StudentAgent):
