@@ -80,14 +80,14 @@ learning_starts: 20_000
 ```
 
 ```bash
-python dqn_agent.py --config test.yaml    # 끝나면 dqn.pt 생성
-python dueling_dqn_agent.py --config test.yaml  # 끝나면 dueling_dqn.pt 생성
-python ppo_agent.py --config test.yaml
+uv run python dqn_agent.py --config test.yaml    # 끝나면 dqn.pt 생성
+uv run python dueling_dqn_agent.py --config test.yaml  # 끝나면 dueling_dqn.pt 생성
+uv run python ppo_agent.py --config test.yaml
 ```
 
 - 터미널 첫 줄에 `[cell-arena] env ...` 가 찍히면 env 정상
 - wandb 대시보드(`https://wandb.ai` 의 `cell-arena` 프로젝트)에 `train/*` 그래프가 10,000 샘플마다 찍히는지 확인
-- 인터넷이 없으면 `WANDB_MODE=offline python dqn_agent.py --config test.yaml`, 나중에 `wandb sync wandb/offline-run-*`
+- 인터넷이 없으면 `WANDB_MODE=offline uv run python dqn_agent.py --config test.yaml`, 나중에 `wandb sync wandb/offline-run-*`
 
 ### 3. 내 컴퓨터에 맞게 설정 조율
 

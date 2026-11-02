@@ -1,4 +1,5 @@
 # uv venv --python 3.11 후 가상환경 활성화 (운영체제별 명령은 README.md 참고)
 # uv pip install -r requirements.txt
 # Linux + NVIDIA GPU: 아래 줄을 cell-arena[cuda] @ ... 로 변경
-cell-arena @ git+https://github.com/leemcado/RL_playground.git@v2.0.0
+# .venv 안의 torch 를 모듈 캐시에서 제거하지 않는 로더 수정 커밋에 고정
+cell-arena @ git+https://github.com/leemcado/RL_playground.git@96ca953236b4d9623c6f4cf8e39c7afd72d49b65
