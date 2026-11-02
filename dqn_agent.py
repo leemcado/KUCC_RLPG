@@ -1,5 +1,7 @@
 """DQN 예제. 사용법과 API 는 README.md 참고."""
 
+# agent.py 의 작성 영역을 채운 예제. TODO 4~6 은 update() 에 구현.
+
 from __future__ import annotations
 
 import argparse
@@ -58,6 +60,7 @@ class FrameStack:
         return out
 
 
+# 모델 작성 영역에서 사용하는 네트워크
 class QNet(nn.Module):
     def __init__(self, in_channels: int, resolution: int) -> None:
         super().__init__()
@@ -74,6 +77,7 @@ class QNet(nn.Module):
         return self.head(self.conv(x.float()))
 
 
+# TODO 1 에서 사용하는 리플레이 버퍼
 class ReplayBuffer:
     def __init__(self, capacity: int) -> None:
         self.capacity = capacity
@@ -97,34 +101,38 @@ class ReplayBuffer:
 
 
 class DQNAgent(StudentAgent):
-    # 0. 기본명세
+    # 0. 기본명세. name, weights 는 본인 이름으로
     name = "dqn"
     color = (90, 160, 250)  # (R, G, B)
-    weights = "dqn.pt"
+    weights = "dqn.pt"  # 대결장은 이 파일을 불러옴
 
     # 1. 관측 / 액션 형태
     obs_spec = ObsSpec(mode="image", resolution=64)
     action_spec = ActionSpec(mode="discrete")
 
-    # 2. 모델
+    # 2. 모델. 구조는 self.cfg 만으로 정해져야 함 (load 할 때 다시 호출됨)
     def setup(self) -> None:
         k = self.cfg.get("frame_stack", 4)
         self.frames = FrameStack(k)
+        # ==================== 작성 시작: 모델 ====================
         self.q = QNet(k * len(IMAGE_CHANNELS), self.obs_spec.resolution).to(self.device)
         self.epsilon = 0.05
+        # ==================== 작성 끝 ====================
 
-    # 3. 관측(NumPy) -> 신경망 입력. 이미지 k 프레임 (B, k*6, R, R)
+    # 3. 관측(NumPy) -> 신경망 입력. 기본은 이미지 k 프레임 (B, k*6, R, R)
     def preprocess(self, obs: Observation) -> torch.Tensor:
         img = torch.as_tensor(obs.image, device=self.device)
         return self.frames.push(img).flatten(1, 2)
 
-    # 4. 행동 선택. epsilon-greedy
+    # 4. 행동 선택. 대결에서는 explore=False
     def policy(self, x: torch.Tensor, explore: bool) -> np.ndarray:
+        # ==================== 작성 시작: 행동 선택 ====================
         action = self.q(x).argmax(dim=1)
         if explore:
             rand = torch.rand(len(action), device=action.device) < self.epsilon
             action[rand] = torch.randint(NUM_ACTIONS, (int(rand.sum()),), device=action.device)
         return action.cpu().numpy()
+        # ==================== 작성 끝 ====================
 
     # 프레임 스택 초기화. done=True 인 원소만
     def reset(self, done: np.ndarray) -> None:
@@ -136,22 +144,35 @@ class DQNAgent(StudentAgent):
 
 
 def update(agent: DQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimizer, b: dict[str, torch.Tensor], gamma: float) -> float:
+    # TODO 4: 미니배치의 현재 Q(s, a) 추출 (배치 추출은 train 에서 수행)
+    # ==================== 작성 시작: TODO 4 ====================
     q = agent.q(b["x"]).gather(1, b["action"].unsqueeze(1)).squeeze(1)
+    # ==================== 작성 끝 ====================
+
+    # TODO 5: no_grad 안에서 TD 타깃 계산
+    # ==================== 작성 시작: TODO 5 ====================
     with torch.no_grad():
         target = b["reward"] + gamma * (1 - b["terminated"]) * q_target(b["x_next"]).max(dim=1).values
+    # ==================== 작성 끝 ====================
+
+    # TODO 6: loss 계산, 역전파, 파라미터 갱신
+    # ==================== 작성 시작: TODO 6 ====================
     loss = F.smooth_l1_loss(q, target)
     optimizer.zero_grad()
     loss.backward()
     nn.utils.clip_grad_norm_(agent.q.parameters(), 10.0)
     optimizer.step()
     return float(loss)
+    # ==================== 작성 끝 ====================
 
 
-# 6. 학습 루프
+# 6. 학습 루프. TODO 번호는 agent.py 의 TODO 1~8 에 대응.
 def train(cfg: Config) -> None:
     agent = DQNAgent(cfg)
     env = make_env(cfg, agent)
     run = wandb.init(project="cell-arena", name=agent.name, config=cfg.to_dict())
+    # TODO 1: 학습 준비
+    # ==================== 작성 시작: TODO 1 ====================
     q_target = copy.deepcopy(agent.q)
     optimizer = torch.optim.Adam(agent.q.parameters(), lr=cfg.get("lr", 1e-4))
     buffer = ReplayBuffer(cfg.get("buffer_size", 20_000))
@@ -160,11 +181,13 @@ def train(cfg: Config) -> None:
     learning_starts = cfg.get("learning_starts", 50_000)  # 이하 단위는 샘플 수
     target_update = cfg.get("target_update", 20_000)
     eps_start, eps_end, eps_decay = cfg.get("eps_start", 1.0), cfg.get("eps_end", 0.05), cfg.get("eps_decay", 1_000_000)
+    # ==================== 작성 끝 ====================
 
     ep_reward = np.zeros(cfg.num_envs)
     recent_returns: list[float] = []
     log_every = 10_000
     next_log = log_every
+    # TODO 1 의 타깃 동기화 시점과 첫 업데이트 전 loss 초기화
     next_target = target_update
     loss = float("nan")
     start_time = time.time()
@@ -173,24 +196,37 @@ def train(cfg: Config) -> None:
     agent.reset(np.ones(cfg.num_envs, dtype=bool))
     samples = 0
     while samples < cfg.total_samples:
+        # TODO 2: 탐험률 갱신 + 현재 입력 x 확보
+        # ==================== 작성 시작: TODO 2 ====================
         agent.epsilon = max(eps_end, eps_start - (eps_start - eps_end) * samples / eps_decay)
         with torch.no_grad():  # act() 와 같음. x 를 버퍼에 넣으려고 나눠서 호출
             x = agent.preprocess(obs)
             action = agent.policy(x, explore=True)
+        # ==================== 작성 끝 ====================
+
         out = env.step(action)
         reward = agent.reward(out.events, out.final_obs)
         samples += cfg.num_envs
 
+        # TODO 3: 다음 입력과 전이 저장
+        # ==================== 작성 시작: TODO 3 ====================
         x_next = agent.frames.peek(torch.as_tensor(out.final_obs.image, device=agent.device)).flatten(1, 2)
         buffer.add(
             x=x, action=torch.as_tensor(action), reward=torch.as_tensor(reward, dtype=torch.float32),
             x_next=x_next, terminated=torch.as_tensor(out.terminated, dtype=torch.float32),
         )
+        # ==================== 작성 끝 ====================
+
+        # TODO 4~6: learning_starts 이후 미니배치 추출 -> update() 의 해당 단계 실행
         if samples >= learning_starts:
             loss = update(agent, q_target, optimizer, buffer.sample(batch_size, agent.device), gamma)
+
+        # TODO 7: 타깃 네트워크 동기화
+        # ==================== 작성 시작: TODO 7 ====================
         if samples >= next_target:
             next_target += target_update
             q_target.load_state_dict(agent.q.state_dict())
+        # ==================== 작성 끝 ====================
 
         episode_done = out.terminated | out.truncated
         ep_reward += reward
@@ -200,14 +236,17 @@ def train(cfg: Config) -> None:
 
         if samples >= next_log:
             next_log += log_every
+            # TODO 8: loss 와 탐험률 로그
             run.log({
                 "train/reward_step": float(reward.mean()),
                 "train/episode_return": float(np.mean(recent_returns)) if recent_returns else float("nan"),
                 "train/size": float(out.final_obs.self_state[:, 0].mean()),
                 "train/deaths": int(out.events.died.sum()),
                 "train/samples_per_sec": samples / (time.time() - start_time),
+                # ==================== 작성 시작: TODO 8 ====================
                 "train/loss": loss,
                 "train/epsilon": agent.epsilon,
+                # ==================== 작성 끝 ====================
             }, step=samples)
 
         agent.reset(episode_done | out.events.died)
