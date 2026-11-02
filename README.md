@@ -7,11 +7,58 @@
 
 ### 0. 설치
 
+`uv` 가 없으면 운영체제에 맞게 한 번 설치.
+
+macOS (Homebrew):
+
 ```bash
-pip install -r requirements.txt   # Linux + NVIDIA GPU 는 requirements.txt 주석 참고
-cell-arena-doctor                 # 설치 점검. 마지막 줄이 "모두 정상" 이면 됨
+brew install uv
+```
+
+Linux:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+설치 후 터미널을 새로 열고 `uv --version` 확인.
+Git 도 설치되어 있어야 함 (`git --version` 으로 확인).
+이 저장소 폴더 (`requirements.txt` 가 있는 위치)에서 Python 3.11 가상환경 생성.
+해당 Python 이 없으면 uv 가 자동으로 내려받음.
+
+```bash
+uv venv --python 3.11
+```
+
+가상환경 활성화 (터미널을 새로 열 때마다 실행):
+
+```bash
+# macOS / Linux (bash, zsh)
+source .venv/bin/activate
+```
+
+```powershell
+# Windows (PowerShell)
+.\.venv\Scripts\Activate.ps1
+```
+
+활성화한 터미널에서 의존성 설치와 점검.
+Linux + NVIDIA GPU 는 설치 전에 `requirements.txt` 의 CUDA 주석 참고.
+
+```bash
+uv pip install -r requirements.txt
+cell-arena-doctor  # 설치 점검. 마지막 줄이 "모두 정상" 이면 됨
 wandb login
 ```
+
+이후 모든 `python`, `cell-arena-*`, `wandb` 명령은 가상환경을 활성화한 터미널에서 실행.
+설정 파일을 바꿔도 다시 설치할 필요는 없고, `requirements.txt` 를 바꾸면 설치 명령을 다시 실행.
 
 ### 1. 게임 직접 플레이
 

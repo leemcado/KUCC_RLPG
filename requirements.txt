@@ -1,3 +1,4 @@
-# pip install -r requirements.txt
+# uv venv --python 3.11 후 가상환경 활성화 (운영체제별 명령은 README.md 참고)
+# uv pip install -r requirements.txt
 # Linux + NVIDIA GPU: 아래 줄을 cell-arena[cuda] @ ... 로 변경
 cell-arena @ git+https://github.com/leemcado/RL_playground.git@v2.0.0
