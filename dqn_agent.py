@@ -147,6 +147,8 @@ def update(agent: DQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimize
     # TODO 4: 미니배치의 현재 Q(s, a) 추출 (배치 추출은 train 에서 수행)
     # ==================== 작성 시작: TODO 4 ====================
     q = agent.q(b["x"]).gather(1, b["action"].unsqueeze(1)).squeeze(1)
+    # unsqueeze(1): [1, 2, 0] → [[1], [2], [0]]
+    # squeeze(1): [[1], [2], [0]] → [1, 2, 0]
     # ==================== 작성 끝 ====================
 
     # TODO 5: no_grad 안에서 TD 타깃 계산
