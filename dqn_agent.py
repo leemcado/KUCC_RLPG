@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
-import wandb
 from cell_arena import (
     IMAGE_CHANNELS,
     ActionSpec,
@@ -25,6 +24,8 @@ from cell_arena import (
     make_env,
 )
 from torch import nn
+
+import wandb
 
 NUM_ACTIONS = 18
 
@@ -151,12 +152,13 @@ def update(agent: DQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimize
     # TODO 5: no_grad 안에서 TD 타깃 계산
     # ==================== 작성 시작: TODO 5 ====================
     with torch.no_grad():
-        target = b["reward"] + gamma * (1 - b["terminated"]) * q_target(b["x_next"]).max(dim=1).values
+        q_next = q_target(b["x_next"]).max(dim=1).values
+        y = b["reward"] + gamma * (1 - b["terminated"]) * q_next
     # ==================== 작성 끝 ====================
 
     # TODO 6: loss 계산, 역전파, 파라미터 갱신
     # ==================== 작성 시작: TODO 6 ====================
-    loss = F.smooth_l1_loss(q, target)
+    loss = F.smooth_l1_loss(q, y)
     optimizer.zero_grad()
     loss.backward()
     nn.utils.clip_grad_norm_(agent.q.parameters(), 10.0)
