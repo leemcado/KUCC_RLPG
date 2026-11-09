@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import wandb
 from cell_arena import (
     ActionSpec,
     Config,
@@ -20,6 +19,8 @@ from cell_arena import (
     make_env,
 )
 from torch import nn
+
+import wandb
 
 NUM_ACTIONS = 18
 
@@ -112,7 +113,8 @@ class MyAgent(StudentAgent):
 
     # 2. 모델. 구조는 self.cfg 만으로 정해져야 함 (load 할 때 다시 호출됨)
     def setup(self) -> None:
-        self.frames = FrameStack(self.cfg.get("frame_stack", 4))
+        k = self.cfg.get("frame_stack", 4)
+        self.frames = FrameStack(k)
         # DQN: 입력 (B, k*6, R, R) -> 행동별 Q값 (B, 18) 인 모델을 self.q 로 구성.
         # Dueling DQN: V (B, 1), A (B, 18) 을 Q = V + A - mean(A) 로 결합.
         # mean 은 각 샘플의 행동 축으로 계산. 모델은 self.device 에 배치.
