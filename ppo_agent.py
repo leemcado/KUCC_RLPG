@@ -1,5 +1,7 @@
 """PPO 예제. 사용법과 API 는 README.md 참고."""
 
+# ppo_skeleton.py 의 작성 영역을 채운 예제. TODO 4~6, 8 (1/2) 는 update() 에 구현.
+
 from __future__ import annotations
 
 import argparse
@@ -114,9 +116,11 @@ class PPOAgent(StudentAgent):
 
 def update(agent: PPOAgent, optimizer: torch.optim.Optimizer, rollout: list[dict[str, torch.Tensor]], last_value: torch.Tensor, cfg: Config) -> dict[str, float]:
     gamma, lam, clip = cfg.get("gamma", 0.99), cfg.get("gae_lambda", 0.95), cfg.get("clip", 0.2)
+    vf_coef, ent_coef = cfg.get("vf_coef", 0.5), cfg.get("ent_coef", 0.001)
     data = {k: torch.stack([step[k] for step in rollout]) for k in rollout[0]}  # (T, B, ...)
 
-    # GAE
+    # TODO 4: GAE 로 advantage 와 return 계산
+    # ==================== 작성 시작: TODO 4 ====================
     adv = torch.zeros_like(data["reward"])
     gae, next_value = 0.0, last_value
     for t in reversed(range(len(rollout))):
@@ -125,56 +129,93 @@ def update(agent: PPOAgent, optimizer: torch.optim.Optimizer, rollout: list[dict
         gae = delta + gamma * lam * nonterminal * gae
         adv[t] = gae
         next_value = data["value"][t]
+    # ==================== 작성 끝 ====================
     data["adv"] = adv
     data["ret"] = adv + data["value"]
     flat = {k: v.flatten(0, 1) for k, v in data.items()}
 
+    stats: dict[str, float] = {}
     for _ in range(cfg.get("epochs", 4)):
         for idx in torch.randperm(len(flat["adv"])).split(cfg.get("minibatch_size", 1024)):
             b = {k: v[idx].to(agent.device) for k, v in flat.items()}
             dist, value = agent.net(b["x"])
-            ratio = (dist.log_prob(b["action"]).sum(1) - b["logp"]).exp()
+
+            # TODO 5: 확률 비율과 clipped surrogate
+            # ==================== 작성 시작: TODO 5 ====================
+            new_logp = dist.log_prob(b["action"]).sum(1)
+            ratio = (new_logp - b["logp"]).exp()
             adv_b = (b["adv"] - b["adv"].mean()) / (b["adv"].std() + 1e-8)
-            policy_loss = -torch.min(ratio * adv_b, ratio.clamp(1 - clip, 1 + clip) * adv_b).mean()
+            surr1 = ratio * adv_b
+            surr2 = ratio.clamp(1 - clip, 1 + clip) * adv_b
+            policy_loss = -torch.min(surr1, surr2).mean()
+            # ==================== 작성 끝 ====================
+
+            # TODO 6: value loss + entropy -> 총 loss -> 역전파 -> 갱신
+            # ==================== 작성 시작: TODO 6 ====================
             value_loss = 0.5 * (b["ret"] - value).pow(2).mean()
             entropy = dist.entropy().sum(1).mean()
-            loss = policy_loss + 0.5 * value_loss - cfg.get("ent_coef", 0.001) * entropy
+            loss = policy_loss + vf_coef * value_loss - ent_coef * entropy
             optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(agent.net.parameters(), 0.5)
             optimizer.step()
-    return {"train/policy_loss": float(policy_loss), "train/value_loss": float(value_loss), "train/entropy": float(entropy)}
+            # ==================== 작성 끝 ====================
+
+            # TODO 8 (1/2): 로그용 숫자 기록
+            # ==================== 작성 시작: TODO 8 (1/2) ====================
+            with torch.no_grad():
+                log_ratio = new_logp - b["logp"]
+                stats = {
+                    "train/policy_loss": float(policy_loss),
+                    "train/value_loss": float(value_loss),
+                    "train/entropy": float(entropy),
+                    "train/approx_kl": float(((ratio - 1) - log_ratio).mean()),
+                    "train/clip_frac": float(((ratio - 1).abs() > clip).float().mean()),
+                }
+            # ==================== 작성 끝 ====================
+    return stats
 
 
-# 6. 학습 루프
+# 6. 학습 루프. TODO 번호는 ppo_skeleton.py 의 TODO 1~8 에 대응.
 def train(cfg: Config) -> None:
     agent = PPOAgent(cfg)
     env = make_env(cfg, agent)
     run = wandb.init(project="cell-arena", name=agent.name, config=cfg.to_dict())
+    # TODO 1: 학습 준비
+    # ==================== 작성 시작: TODO 1 ====================
     optimizer = torch.optim.Adam(agent.net.parameters(), lr=cfg.get("lr", 3e-4))
     rollout: list[dict[str, torch.Tensor]] = []
     n_steps = cfg.get("n_steps", 128)  # env 당 rollout 길이
     gamma = cfg.get("gamma", 0.99)
+    stats: dict[str, float] = {}
+    # ==================== 작성 끝 ====================
 
     ep_reward = np.zeros(cfg.num_envs)
     recent_returns: list[float] = []
     log_every = 10_000
     next_log = log_every
-    stats: dict[str, float] = {}
     start_time = time.time()
 
     obs = env.reset()
     agent.reset(np.ones(cfg.num_envs, dtype=bool))
     samples = 0
     while samples < cfg.total_samples:
+        # TODO 2: 현재 입력 x, 행동, log 확률, 가치 확보
+        # ==================== 작성 시작: TODO 2 ====================
         with torch.no_grad():  # act() 와 같음. logp, value 가 필요해서 나눠서 호출
             x = agent.preprocess(obs)
             dist, value = agent.net(x)
             action = dist.sample()
+            logp = dist.log_prob(action).sum(1)
+        # ==================== 작성 끝 ====================
+
         out = env.step(action.cpu().numpy())
         reward = agent.reward(out.events, out.final_obs)
         samples += cfg.num_envs
+        episode_done = out.terminated | out.truncated
 
+        # TODO 3: 보상 보정과 rollout 저장
+        # ==================== 작성 시작: TODO 3 ====================
         # max_steps 로 끊긴 env 는 마지막 상태의 가치로 부트스트랩
         r = torch.as_tensor(reward, dtype=torch.float32)
         cut = torch.as_tensor(out.truncated & ~out.terminated)
@@ -182,12 +223,11 @@ def train(cfg: Config) -> None:
             with torch.no_grad():
                 x_final = agent.frames.peek(torch.as_tensor(out.final_obs.image, device=agent.device)).flatten(1, 2)
                 r[cut] += gamma * agent.net(x_final)[1].cpu()[cut]
-
-        episode_done = out.terminated | out.truncated
         rollout.append({
-            "x": x.cpu(), "action": action.cpu(), "logp": dist.log_prob(action).sum(1).cpu(),
+            "x": x.cpu(), "action": action.cpu(), "logp": logp.cpu(),
             "value": value.cpu(), "reward": r, "done": torch.as_tensor(episode_done, dtype=torch.float32),
         })
+        # ==================== 작성 끝 ====================
 
         ep_reward += reward
         recent_returns.extend(ep_reward[episode_done].tolist())
@@ -202,17 +242,23 @@ def train(cfg: Config) -> None:
                 "train/size": float(out.final_obs.self_state[:, 0].mean()),
                 "train/deaths": int(out.events.died.sum()),
                 "train/samples_per_sec": samples / (time.time() - start_time),
+                # TODO 8 (2/2): update 가 돌려준 stats
+                # ==================== 작성 시작: TODO 8 (2/2) ====================
                 **stats,
+                # ==================== 작성 끝 ====================
             }, step=samples)
 
         agent.reset(episode_done | out.events.died)
         obs = out.obs
 
+        # TODO 7: rollout 이 n_steps 만큼 차면 업데이트
+        # ==================== 작성 시작: TODO 7 ====================
         if len(rollout) == n_steps:
             with torch.no_grad():
                 last_value = agent.net(agent.frames.peek(torch.as_tensor(obs.image, device=agent.device)).flatten(1, 2))[1].cpu()
             stats = update(agent, optimizer, rollout, last_value, cfg)
             rollout.clear()
+        # ==================== 작성 끝 ====================
 
     agent.save()
     run.finish()
