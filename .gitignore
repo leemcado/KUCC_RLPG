@@ -13,5 +13,11 @@ __pycache__/
 .venv/
 venv/
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .DS_Store
+
+# 에이전트
+.claude/*
+!.claude/settings.json
