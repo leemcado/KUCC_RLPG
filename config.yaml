@@ -5,8 +5,9 @@ max_steps: 1000     # 에피소드 길이 상한 (null = 무한)
 seed: 0
 
 # 나머지는 자유. 코드에서 cfg.<키> 로 읽음
-total_samples: 5_000_000
+total_samples: 10000
 frame_stack: 4
 lr: 3.0e-4
 gamma: 0.99
 batch_size: 256
+learning_starts: 1000
