@@ -167,7 +167,6 @@ def update(
             loss.backward()
             nn.utils.clip_grad_norm_(agent.net.parameters(), 0.5)
             optimizer.step()
-<<<<<<< HEAD
             # ==================== 작성 끝 ====================
 
             # TODO 8 (1/2): 로그용 숫자 기록
@@ -183,13 +182,6 @@ def update(
                 }
             # ==================== 작성 끝 ====================
     return stats
-=======
-    return {
-        "train/policy_loss": float(policy_loss),
-        "train/value_loss": float(value_loss),
-        "train/entropy": float(entropy),
-    }
->>>>>>> 1dba1e0 (style: ruff 기준으로 import 정렬 및 ppo_agent 포맷 적용)
 
 
 # 6. 학습 루프. TODO 번호는 ppo_skeleton.py 의 TODO 1~8 에 대응.
@@ -239,26 +231,17 @@ def train(cfg: Config) -> None:
             with torch.no_grad():
                 x_final = agent.frames.peek(torch.as_tensor(out.final_obs.image, device=agent.device)).flatten(1, 2)
                 r[cut] += gamma * agent.net(x_final)[1].cpu()[cut]
-<<<<<<< HEAD
-        rollout.append({
-            "x": x.cpu(), "action": action.cpu(), "logp": logp.cpu(),
-            "value": value.cpu(), "reward": r, "done": torch.as_tensor(episode_done, dtype=torch.float32),
-        })
-        # ==================== 작성 끝 ====================
-=======
-
-        episode_done = out.terminated | out.truncated
         rollout.append(
             {
                 "x": x.cpu(),
                 "action": action.cpu(),
-                "logp": dist.log_prob(action).sum(1).cpu(),
+                "logp": logp.cpu(),
                 "value": value.cpu(),
                 "reward": r,
                 "done": torch.as_tensor(episode_done, dtype=torch.float32),
             }
         )
->>>>>>> 1dba1e0 (style: ruff 기준으로 import 정렬 및 ppo_agent 포맷 적용)
+        # ==================== 작성 끝 ====================
 
         ep_reward += reward
         recent_returns.extend(ep_reward[episode_done].tolist())
@@ -267,19 +250,6 @@ def train(cfg: Config) -> None:
 
         if samples >= next_log:
             next_log += log_every
-<<<<<<< HEAD
-            run.log({
-                "train/reward_step": float(reward.mean()),
-                "train/episode_return": float(np.mean(recent_returns)) if recent_returns else float("nan"),
-                "train/size": float(out.final_obs.self_state[:, 0].mean()),
-                "train/deaths": int(out.events.died.sum()),
-                "train/samples_per_sec": samples / (time.time() - start_time),
-                # TODO 8 (2/2): update 가 돌려준 stats
-                # ==================== 작성 시작: TODO 8 (2/2) ====================
-                **stats,
-                # ==================== 작성 끝 ====================
-            }, step=samples)
-=======
             run.log(
                 {
                     "train/reward_step": float(reward.mean()),
@@ -287,11 +257,13 @@ def train(cfg: Config) -> None:
                     "train/size": float(out.final_obs.self_state[:, 0].mean()),
                     "train/deaths": int(out.events.died.sum()),
                     "train/samples_per_sec": samples / (time.time() - start_time),
+                    # TODO 8 (2/2): update 가 돌려준 stats
+                    # ==================== 작성 시작: TODO 8 (2/2) ====================
                     **stats,
+                    # ==================== 작성 끝 ====================
                 },
                 step=samples,
             )
->>>>>>> 1dba1e0 (style: ruff 기준으로 import 정렬 및 ppo_agent 포맷 적용)
 
         agent.reset(episode_done | out.events.died)
         obs = out.obs
