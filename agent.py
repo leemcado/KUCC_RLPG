@@ -145,7 +145,7 @@ class MyAgent(StudentAgent):
 
 
 # 6. 학습 루프. 아래 TODO 1~8 은 DQN / Dueling DQN 실습 순서.
-# PPO 를 구현할 때는 리플레이 버퍼와 TD 타깃 대신 ppo_agent.py 의 흐름 참고.
+# PPO 는 ppo_skeleton.py 에서 별도 TODO 1~8 로 실습 (정답: ppo_agent.py).
 def train(cfg: Config) -> None:
     agent = MyAgent(cfg)
     env = make_env(cfg, agent)

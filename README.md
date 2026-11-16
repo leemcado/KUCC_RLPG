@@ -113,7 +113,7 @@ uv run python ppo_agent.py --config test.yaml
 
 ### 4. 직접 설계
 
-`agent.py` 를 채우거나 예제 하나를 `agent.py` 로 복사해 시작. 아래 "할 일" 참고.
+`agent.py` (DQN) 나 `ppo_skeleton.py` (PPO) 를 채우거나 예제 하나를 `agent.py` 로 복사해 시작. 아래 "할 일" 참고.
 관측 전처리, 모델, 보상, 학습 루프를 바꿔 가며 wandb 로 비교.
 
 ## 할 일
@@ -190,6 +190,59 @@ cell-arena-play --opponents gold agent.py
 학습 중 보상이나 한 번의 대결 결과만으로 판단하지 않음.
 예제의 기본 탐험 스케줄은 10만 샘플 시점에도 무작위 행동 확률이 약 90.5% 이므로,
 짧은 학습 중의 행동과 탐험을 끈 평가 행동은 구분해야 함.
+
+### PPO 실습 순서
+
+`ppo_skeleton.py` 는 `agent.py` 의 PPO 판 스켈레톤 (연속 액션, 이미지 4 프레임).
+DQN 과 달리 리플레이 버퍼, 타깃 네트워크, epsilon 이 없고, `n_steps` 동안 모은 rollout 으로 여러 번 학습한 뒤 버림.
+TODO 4~6 과 TODO 8 의 앞부분은 `update` 안에 있음. 정답은 `ppo_agent.py` 의 같은 TODO 번호.
+
+| 단계 | 구현할 내용 | 중간 확인 |
+|---|---|---|
+| 모델·행동 | `setup`, `policy` 구현 | `self.net(x)` 가 (정규분포, V `(B,)`) 를 냄. 행동은 float 배열 `(B, 3)`. `explore=False` 에서는 분포의 평균 |
+| TODO 1 | 옵티마이저, rollout 리스트, `n_steps`, `gamma`, `stats` 준비 | 버퍼·타깃 네트워크 없음 |
+| TODO 2 | 현재 입력, 행동, log 확률, 가치 확보 | 전처리는 스텝당 한 번. `logp`, `value` 는 둘 다 `(B,)` (log 확률은 행동 차원 3 으로 합함) |
+| TODO 3 | truncated 부트스트랩, rollout 저장 | 끊긴 env 만 `r += gamma * V(final_obs)`. `done = terminated \| truncated`, `died` 는 done 아님 |
+| TODO 4 | GAE 로 advantage, return 계산 | 뒤에서부터 계산. `adv` 는 `(T, B)`. done 칸에서 다음 에피소드 값이 섞이지 않음 |
+| TODO 5 | 확률 비율, clipped surrogate | 첫 epoch 첫 미니배치의 `ratio` 는 전부 1. `ratio` 와 advantage 는 `(N,)` |
+| TODO 6 | value loss, entropy, 역전파, 갱신 | `loss = policy + vf_coef * value - ent_coef * entropy`. 기울기 클리핑 0.5 |
+| TODO 7 | rollout 이 차면 `last_value` 계산 후 `update`, rollout 비우기 | 업데이트는 `n_steps` 스텝마다 한 번. 쓴 데이터는 버림 (on-policy) |
+| TODO 8 | `policy_loss`, `value_loss`, `entropy`, `approx_kl`, `clip_frac` 로그 | `update` 가 dict 로 돌려주고 `run.log` 에 합침 |
+
+PPO 하이퍼파라미터 기본값 (`config.yaml` 에 적으면 덮어씀).
+
+| 키 | 기본값 | 의미 |
+|---|---|---|
+| `n_steps` | 128 | env 당 rollout 길이. 한 번에 `n_steps x num_envs` 샘플 |
+| `epochs` | 4 | rollout 하나를 몇 번 반복 학습할지 |
+| `minibatch_size` | 1024 | 미니배치 크기 |
+| `clip` | 0.2 | 비율을 `[1 - clip, 1 + clip]` 로 자름 |
+| `gae_lambda` | 0.95 | GAE 의 lambda. 0 이면 1-step TD, 1 이면 Monte Carlo |
+| `vf_coef` | 0.5 | value loss 가중치 |
+| `ent_coef` | 0.001 | entropy 보너스 가중치 |
+| `lr` | 3e-4 | 학습률 |
+
+### PPO 실습 완료 기준
+
+`test.yaml` (10만 샘플) 로 짧게 확인. `learning_starts` 는 PPO 에서 쓰지 않음.
+rollout 메모리는 위 메모리 조율 표의 `n_steps x num_envs` 기준.
+
+```bash
+uv run python ppo_skeleton.py --config test.yaml
+cell-arena-check ppo_skeleton.py
+cell-arena-play --opponents gold ppo_skeleton.py
+```
+
+- [ ] **행동 규격:** `cell-arena-check ppo_skeleton.py` 에서 `[통과]` 가 나옴.
+- [ ] **학습 업데이트:** 첫 rollout 이 찬 뒤 `train/policy_loss`, `train/value_loss` 가 NaN/Inf 가 아닌 값으로 기록됨.
+- [ ] **신뢰 구간:** `train/approx_kl` 이 대체로 0.02 이하, `train/clip_frac` 이 0~0.3 정도에 머무름.
+  계속 커지면 `lr` 이나 `epochs` 를 줄임.
+- [ ] **탐험:** `train/entropy` 가 유한하고, 학습이 진행되며 천천히 줄어듦. 급격히 떨어지면 `ent_coef` 를 키움.
+- [ ] **에피소드 로그:** 최소 한 에피소드가 종료된 뒤 `train/episode_return` 이 유한한 값으로 기록됨.
+- [ ] **저장·재로딩:** 학습이 정상 종료되어 `weights` 파일(기본 `my_ppo.pt`)이 생성되고, 위 플레이 명령으로 불러와 행동함.
+
+DQN 과 마찬가지로 봇을 이기는 것이 필수는 아님. 성능 비교는 `explore=False` (분포의 평균 행동) 로 여러 번 평가.
+제출 시 `ppo_skeleton.py` 를 `<이름>.py` 로 바꾸고 `name` / `weights` 도 맞춤.
 
 ## 예제
 
