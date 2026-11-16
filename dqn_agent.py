@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
+import wandb
 from cell_arena import (
     IMAGE_CHANNELS,
     ActionSpec,
@@ -24,8 +25,6 @@ from cell_arena import (
     make_env,
 )
 from torch import nn
-
-import wandb
 
 NUM_ACTIONS = 18
 

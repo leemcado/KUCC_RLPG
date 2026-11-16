@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import wandb
 from cell_arena import (
     ActionSpec,
     Config,
@@ -19,8 +20,6 @@ from cell_arena import (
     make_env,
 )
 from torch import nn
-
-import wandb
 
 NUM_ACTIONS = 18
 

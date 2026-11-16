@@ -14,7 +14,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
-
 from cell_arena import (
     IMAGE_CHANNELS,
     ActionSpec,
