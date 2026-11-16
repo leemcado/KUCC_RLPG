@@ -64,9 +64,12 @@ class QNet(nn.Module):
     def __init__(self, in_channels: int, resolution: int) -> None:
         super().__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, 32, 8, stride=4), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
+            nn.Conv2d(in_channels, 32, 8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=1),
+            nn.ReLU(),
             nn.Flatten(),
         )
         n = self.conv(torch.zeros(1, in_channels, resolution, resolution)).shape[1]
@@ -142,7 +145,9 @@ class DQNAgent(StudentAgent):
         return (events.size_after - events.size_before) / 100.0 - 1.0 * events.died + 5.0 * events.won
 
 
-def update(agent: DQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimizer, b: dict[str, torch.Tensor], gamma: float) -> float:
+def update(
+    agent: DQNAgent, q_target: nn.Module, optimizer: torch.optim.Optimizer, b: dict[str, torch.Tensor], gamma: float
+) -> float:
     # TODO 4: 미니배치의 현재 Q(s, a) 추출 (배치 추출은 train 에서 수행)
     # ==================== 작성 시작: TODO 4 ====================
     q = agent.q(b["x"]).gather(1, b["action"].unsqueeze(1)).squeeze(1)
@@ -214,8 +219,11 @@ def train(cfg: Config) -> None:
         # ==================== 작성 시작: TODO 3 ====================
         x_next = agent.frames.peek(torch.as_tensor(out.final_obs.image, device=agent.device)).flatten(1, 2)
         buffer.add(
-            x=x, action=torch.as_tensor(action), reward=torch.as_tensor(reward, dtype=torch.float32),
-            x_next=x_next, terminated=torch.as_tensor(out.terminated, dtype=torch.float32),
+            x=x,
+            action=torch.as_tensor(action),
+            reward=torch.as_tensor(reward, dtype=torch.float32),
+            x_next=x_next,
+            terminated=torch.as_tensor(out.terminated, dtype=torch.float32),
         )
         # ==================== 작성 끝 ====================
 
@@ -239,17 +247,20 @@ def train(cfg: Config) -> None:
         if samples >= next_log:
             next_log += log_every
             # TODO 8: loss 와 탐험률 로그
-            run.log({
-                "train/reward_step": float(reward.mean()),
-                "train/episode_return": float(np.mean(recent_returns)) if recent_returns else float("nan"),
-                "train/size": float(out.final_obs.self_state[:, 0].mean()),
-                "train/deaths": int(out.events.died.sum()),
-                "train/samples_per_sec": samples / (time.time() - start_time),
-                # ==================== 작성 시작: TODO 8 ====================
-                "train/loss": loss,
-                "train/epsilon": agent.epsilon,
-                # ==================== 작성 끝 ====================
-            }, step=samples)
+            run.log(
+                {
+                    "train/reward_step": float(reward.mean()),
+                    "train/episode_return": float(np.mean(recent_returns)) if recent_returns else float("nan"),
+                    "train/size": float(out.final_obs.self_state[:, 0].mean()),
+                    "train/deaths": int(out.events.died.sum()),
+                    "train/samples_per_sec": samples / (time.time() - start_time),
+                    # ==================== 작성 시작: TODO 8 ====================
+                    "train/loss": loss,
+                    "train/epsilon": agent.epsilon,
+                    # ==================== 작성 끝 ====================
+                },
+                step=samples,
+            )
 
         agent.reset(episode_done | out.events.died)
         obs = out.obs
